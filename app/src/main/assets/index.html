@@ -408,41 +408,56 @@ document.getElementById('fileInput').addEventListener('change', async function(e
 
   const reader = new FileReader();
   reader.onload = async function(){
-    const dataUrl = reader.result;
-    try {
-      const resp = await fetch('https://partners.january.ai/v1.2/food-scans/photo', {
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json',
-          'Authorization':'Bearer '+apiKey,
-          'x-end-user-id':'dietbuddy_user'
-        },
-        body: JSON.stringify({image: dataUrl})
-      });
-      const data = await resp.json();
-      document.getElementById('aiLoading').style.display='none';
-      if(!data.total_nutrients) throw new Error(data.detail||data.message||'识别失败');
+    // 先压缩图片：缩到最长边1024px，JPEG质量0.7
+    const imgTmp = new Image();
+    imgTmp.onload = async function(){
+      let w = imgTmp.width, h = imgTmp.height;
+      const maxSide = 1024;
+      if(Math.max(w,h) > maxSide){
+        if(w > h){ h = h*maxSide/w; w = maxSide; }
+        else { w = w*maxSide/h; h = maxSide; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(imgTmp, 0, 0, w, h);
+      const compressed = canvas.toDataURL('image/jpeg', 0.7);
 
-      const n = data.total_nutrients;
-      const kcal = n.calories?.value || 0;
-      const carb = n.carbohydrates?.value || 0;
-      const prot = n.protein?.value || 0;
-      const fat = n.fat?.value || 0;
-      const foods = (data.detections||[]).map(d=>d.food?.name||'未知');
+      try {
+        const resp = await fetch('https://partners.january.ai/v1.2/food-scans/photo', {
+          method:'POST',
+          headers:{
+            'Content-Type':'application/json',
+            'Authorization':'Bearer '+apiKey,
+            'x-end-user-id':'dietbuddy_user'
+          },
+          body: JSON.stringify({image: compressed})
+        });
+        const data = await resp.json();
+        document.getElementById('aiLoading').style.display='none';
+        if(!data.total_nutrients) throw new Error(data.detail||data.message||'识别失败');
 
-      document.getElementById('aiResult').style.display='block';
-      document.getElementById('aiResult').innerHTML =
-        '<div style="background:#E8F5E9;padding:12px;border-radius:12px;font-size:13px;line-height:1.8;">' +
-        `<b>🤖 ${data.meal_name||'这一餐'}</b><br>` +
-        (foods.length? '识别到：'+foods.join('、')+'<br>' : '') +
-        `<b>${kcal} kcal</b> ｜ 碳水${carb}g 蛋白${prot}g 脂肪${fat}g` +
-        `<br><button class="btn btn-primary" style="margin-top:10px;padding:10px;" onclick="applyAIResult()">计入这一餐</button></div>`;
+        const n = data.total_nutrients;
+        const kcal = n.calories?.value || 0;
+        const carb = n.carbohydrates?.value || 0;
+        const prot = n.protein?.value || 0;
+        const fat = n.fat?.value || 0;
+        const foods = (data.detections||[]).map(d=>d.food?.name||'未知');
 
-      window._aiResult = {name: data.meal_name||'AI识别', kcal, c:carb, p:prot, fa:fat};
-    } catch(err){
-      document.getElementById('aiLoading').style.display='none';
-      alert('识别失败：'+(err.message||'网络错误')+'，请手动选食物');
-    }
+        document.getElementById('aiResult').style.display='block';
+        document.getElementById('aiResult').innerHTML =
+          '<div style="background:#E8F5E9;padding:12px;border-radius:12px;font-size:13px;line-height:1.8;">' +
+          `<b>🤖 ${data.meal_name||'这一餐'}</b><br>` +
+          (foods.length? '识别到：'+foods.join('、')+'<br>' : '') +
+          `<b>${kcal} kcal</b> ｜ 碳水${carb}g 蛋白${prot}g 脂肪${fat}g` +
+          `<br><button class="btn btn-primary" style="margin-top:10px;padding:10px;" onclick="applyAIResult()">计入这一餐</button></div>`;
+
+        window._aiResult = {name: data.meal_name||'AI识别', kcal, c:carb, p:prot, fa:fat};
+      } catch(err){
+        document.getElementById('aiLoading').style.display='none';
+        alert('识别失败：'+(err.message||'网络错误')+'，请手动选食物');
+      }
+    };
+    imgTmp.src = reader.result;
   };
   reader.readAsDataURL(f);
 });
