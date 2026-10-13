@@ -440,7 +440,7 @@ document.getElementById('fileInput').addEventListener('change', async function(e
         const kcal = n.calories?.value || 0;
         const carb = n.carbohydrates?.value || 0;
         const prot = n.protein?.value || 0;
-        const fat = n.fat?.value || 0;
+        const fat = n.total_fat?.value || 0;
         const foods = (data.detections||[]).map(d=>d.food?.name||'未知');
 
         document.getElementById('aiResult').style.display='block';
