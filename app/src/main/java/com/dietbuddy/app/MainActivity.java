@@ -28,6 +28,9 @@ public class MainActivity extends Activity {
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true);
         web.getSettings().setAllowFileAccess(true);
+        web.getSettings().setAllowUniversalAccessFromFileURLs(true);
+        web.getSettings().setAllowFileAccessFromFileURLs(true);
+        web.getSettings().setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         web.getSettings().setMediaPlaybackRequiresUserGesture(false);
 
         web.setWebViewClient(new WebViewClient());
