@@ -417,7 +417,26 @@ document.getElementById('fileInput').addEventListener('change', async function(e
         body: JSON.stringify({
           model:'deepseek-flash',
           messages:[{role:'user', content:[
-            {type:'text', text:'这是用户拍的一餐饭。请识别图里的食物，估计分量和营养。只返回严格JSON，不要markdown不要解释：{"foods":[{"name":"食物名","grams":估计克数,"kcal":热量,"carb_g":碳水克,"protein_g":蛋白质克,"fat_g":脂肪克}],"total_kcal":总热量}'},
+            {type:'text', text:`你是资深中餐营养分析师。用户拍了一张饭菜照片，可能是自选快餐/工作餐/家常菜，请仔细分析。
+
+【分量估算】先判断拍摄角度（俯拍/斜45度/平视），用常见餐具做参照物反推分量：
+- 普通圆形餐盘直径约27cm
+- 家用饭碗直径约11cm，一平碗熟米饭约150g（约174kcal）
+- 筷子长约22-24cm
+- 瓷勺一勺约15g
+拿不准角度时按偏多的分量估。
+
+【逐菜拆分】盘子里有几样东西就分开列（米饭是主食要单独算），不要把整盘当一个菜。每道菜分别给出：菜名、估算总克数、热量、碳水、蛋白、脂肪克数。
+
+【热量计算原则——偏悲观，宁高勿低】
+1. 油必须算足：中餐家常炒/煎菜平均用油15-25g/菜，红烧/干锅/回锅/糖醋类油和糖更多，看到盘底油花、汤汁挂壁都要折算进去（1g油=9kcal）。
+2. 肉的肥瘦不确定时按偏肥估（红烧肉、五花肉按带肥算，不要按纯瘦肉）。
+3. 酱汁、勾芡、糖醋汁、红油、沙拉酱全部计入额外热量，不要只算主料。
+4. 看起来清淡但实际过油的菜（地三鲜、干煸豆角、鱼香茄子）按吸油蔬菜算。
+5. 任何一项不确定时，取该食物热量区间的上限，宁可高估不要漏算。
+
+只返回严格JSON，不要markdown不要解释文字：
+{"foods":[{"name":"菜名","grams":克数,"kcal":热量,"carb_g":碳水克,"protein_g":蛋白克,"fat_g":脂肪克}],"total_kcal":总热量,"note":"一句话说明估算依据"}`},
             {type:'image_url', image_url:{url:'data:image/jpeg;base64,'+b64, detail:'low'}}
           ]}]
         })
