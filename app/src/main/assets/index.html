@@ -412,7 +412,7 @@ document.getElementById('fileInput').addEventListener('change', async function(e
     const imgTmp = new Image();
     imgTmp.onload = async function(){
       let w = imgTmp.width, h = imgTmp.height;
-      const maxSide = 1024;
+      const maxSide = 1600;
       if(Math.max(w,h) > maxSide){
         if(w > h){ h = h*maxSide/w; w = maxSide; }
         else { w = w*maxSide/h; h = maxSide; }
@@ -420,7 +420,7 @@ document.getElementById('fileInput').addEventListener('change', async function(e
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(imgTmp, 0, 0, w, h);
-      const compressed = canvas.toDataURL('image/jpeg', 0.7);
+      const compressed = canvas.toDataURL('image/jpeg', 0.8);
 
       try {
         const resp = await fetch('https://partners.january.ai/v1.2/food-scans/photo', {
