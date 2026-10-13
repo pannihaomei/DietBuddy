@@ -130,8 +130,8 @@
   </div>
   <div class="card">
     <h3>🤖 AI 识别设置</h3>
-    <div style="font-size:12px;color:#8B7575;margin-bottom:10px;">填 DeepSeek API Key，拍照后自动识别食物热量。Key只存在你手机里。</div>
-    <div class="field"><label>DeepSeek API Key</label><input id="inApiKey" type="password" placeholder="sk-..."></div>
+    <div style="font-size:12px;color:#8B7575;margin-bottom:10px;">填 January AI API Key（食物营养垂直识别，比通用大模型准）。Key只存在你手机里。</div>
+    <div class="field"><label>January AI API Key</label><input id="inApiKey" type="password" placeholder="sk-..."></div>
     <button class="btn btn-primary" onclick="saveKey()">保存 Key</button>
   </div>
 </div>
@@ -399,63 +399,46 @@ document.getElementById('fileInput').addEventListener('change', async function(e
   img.style.display='block';
 
   if(!apiKey){
-    alert('还没配API Key，去"我的"页面填DeepSeek Key后再来识别～现在可以手动选食物。');
+    alert('还没配API Key，去"我的"页面填January AI Key后再来识别～现在可以手动选食物。');
     return;
   }
 
   document.getElementById('aiLoading').style.display='block';
   document.getElementById('aiResult').style.display='none';
 
-  // 转base64
   const reader = new FileReader();
   reader.onload = async function(){
-    const b64 = reader.result.split(',')[1];
+    const dataUrl = reader.result;
     try {
-      const resp = await fetch('https://api.deepseek.com/chat/completions', {
+      const resp = await fetch('https://partners.january.ai/v1.2/food-scans/photo', {
         method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
-        body: JSON.stringify({
-          model:'deepseek-flash',
-          messages:[{role:'user', content:[
-            {type:'text', text:`你是资深中餐营养分析师。用户拍了一张饭菜照片，可能是自选快餐/工作餐/家常菜，请仔细分析。
-
-【分量估算】先判断拍摄角度（俯拍/斜45度/平视），用常见餐具做参照物反推分量：
-- 普通圆形餐盘直径约27cm
-- 家用饭碗直径约11cm，一平碗熟米饭约150g（约174kcal）
-- 筷子长约22-24cm
-- 瓷勺一勺约15g
-拿不准角度时按偏多的分量估。
-
-【逐菜拆分】盘子里有几样东西就分开列（米饭是主食要单独算），不要把整盘当一个菜。每道菜分别给出：菜名、估算总克数、热量、碳水、蛋白、脂肪克数。
-
-【热量计算原则——偏悲观，宁高勿低】
-1. 油必须算足：中餐家常炒/煎菜平均用油15-25g/菜，红烧/干锅/回锅/糖醋类油和糖更多，看到盘底油花、汤汁挂壁都要折算进去（1g油=9kcal）。
-2. 肉的肥瘦不确定时按偏肥估（红烧肉、五花肉按带肥算，不要按纯瘦肉）。
-3. 酱汁、勾芡、糖醋汁、红油、沙拉酱全部计入额外热量，不要只算主料。
-4. 看起来清淡但实际过油的菜（地三鲜、干煸豆角、鱼香茄子）按吸油蔬菜算。
-5. 任何一项不确定时，取该食物热量区间的上限，宁可高估不要漏算。
-
-只返回严格JSON，不要markdown不要解释文字：
-{"foods":[{"name":"菜名","grams":克数,"kcal":热量,"carb_g":碳水克,"protein_g":蛋白克,"fat_g":脂肪克}],"total_kcal":总热量,"note":"一句话说明估算依据"}`},
-            {type:'image_url', image_url:{url:'data:image/jpeg;base64,'+b64, detail:'low'}}
-          ]}]
-        })
+        headers:{
+          'Content-Type':'application/json',
+          'Authorization':'Bearer '+apiKey,
+          'x-end-user-id':'dietbuddy_user'
+        },
+        body: JSON.stringify({image: dataUrl})
       });
       const data = await resp.json();
       document.getElementById('aiLoading').style.display='none';
-      const txt = data.choices[0].message.content;
-      // 提取JSON
-      const m = txt.match(/\{[\s\S]*\}/);
-      if(!m) throw new Error('bad response');
-      const parsed = JSON.parse(m[0]);
-      // 渲染结果
+      if(!data.total_nutrients) throw new Error(data.detail||data.message||'识别失败');
+
+      const n = data.total_nutrients;
+      const kcal = n.calories?.value || 0;
+      const carb = n.carbohydrates?.value || 0;
+      const prot = n.protein?.value || 0;
+      const fat = n.fat?.value || 0;
+      const foods = (data.detections||[]).map(d=>d.food?.name||'未知');
+
       document.getElementById('aiResult').style.display='block';
-      document.getElementById('aiResult').innerHTML = '<div style="background:#E8F5E9;padding:12px;border-radius:12px;font-size:13px;line-height:1.8;">' +
-        '<b>🤖 AI识别结果：</b><br>' +
-        parsed.foods.map(f=>`${f.name} ${f.grams}g · ${f.kcal}kcal`).join('<br>') +
-        `<br><b>合计：${parsed.total_kcal} kcal</b>` +
+      document.getElementById('aiResult').innerHTML =
+        '<div style="background:#E8F5E9;padding:12px;border-radius:12px;font-size:13px;line-height:1.8;">' +
+        `<b>🤖 ${data.meal_name||'这一餐'}</b><br>` +
+        (foods.length? '识别到：'+foods.join('、')+'<br>' : '') +
+        `<b>${kcal} kcal</b> ｜ 碳水${carb}g 蛋白${prot}g 脂肪${fat}g` +
         `<br><button class="btn btn-primary" style="margin-top:10px;padding:10px;" onclick="applyAIResult()">计入这一餐</button></div>`;
-      window._aiResult = parsed;
+
+      window._aiResult = {name: data.meal_name||'AI识别', kcal, c:carb, p:prot, fa:fat};
     } catch(err){
       document.getElementById('aiLoading').style.display='none';
       alert('识别失败：'+(err.message||'网络错误')+'，请手动选食物');
@@ -466,10 +449,9 @@ document.getElementById('fileInput').addEventListener('change', async function(e
 
 function applyAIResult(){
   const r = todayRec();
-  window._aiResult.foods.forEach(f=>{
-    r.meals[curMealSlot].push({name:f.name, ic:'🍽️', gram:f.grams,
-      kcal:f.kcal, c:f.carb_g, p:f.protein_g, fa:f.fat_g});
-  });
+  const a = window._aiResult;
+  r.meals[curMealSlot].push({name:a.name, ic:'🤖', gram:0,
+    kcal:a.kcal, c:a.c, p:a.p, fa:a.fa});
   LS.set('records', records);
   closeModal('mealModal');
   renderAll();
