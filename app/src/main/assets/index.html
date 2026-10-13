@@ -423,7 +423,7 @@ document.getElementById('fileInput').addEventListener('change', async function(e
       const compressed = canvas.toDataURL('image/jpeg', 0.8);
 
       try {
-        const resp = await fetch('https://partners.january.ai/v1.2/food-scans/photo', {
+        const resp = await fetch('https://partners.january.ai/v1.2/food-analysis/image', {
           method:'POST',
           headers:{
             'Content-Type':'application/json',
