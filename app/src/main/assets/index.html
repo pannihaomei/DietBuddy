@@ -504,23 +504,37 @@ function saveKey(){
 function renderAll(){
   const d = new Date();
   document.getElementById('todayDate').textContent = `${d.getMonth()+1}月${d.getDate()}日 周${'日一二三四五六'[d.getDay()]}`;
-  if(!plan || !profile){ return; }
   const r = todayRec();
   let totalK=0,totalC=0,totalP=0,totalF=0,totalEx=0;
   ['breakfast','lunch','dinner','snack'].forEach(s=>r.meals[s].forEach(m=>{totalK+=m.kcal;totalC+=m.c;totalP+=m.p;totalF+=m.fa;}));
   r.exercises.forEach(e=>totalEx+=e.kcal);
-  const targetK = plan.intake;
-  const remain = targetK - totalK + totalEx;
-  document.getElementById('ringKcal').textContent = totalK;
-  document.getElementById('ringLeft').textContent = remain>=0 ? `剩 ${remain} kcal` : `超 ${-remain} kcal`;
-  const pct = Math.min(100, totalK/targetK*100);
-  document.getElementById('ringFg').style.strokeDashoffset = 352 - 352*pct/100;
-  document.getElementById('mCarb').textContent = `${Math.round(totalC)}/${plan.carb}g`;
-  document.getElementById('mProt').textContent = `${Math.round(totalP)}/${plan.protein}g`;
-  document.getElementById('mFat').textContent = `${Math.round(totalF)}/${plan.fat}g`;
-  document.getElementById('barCarb').style.width = Math.min(100,totalC/plan.carb*100)+'%';
-  document.getElementById('barProt').style.width = Math.min(100,totalP/plan.protein*100)+'%';
-  document.getElementById('barFat').style.width = Math.min(100,totalF/plan.fat*100)+'%';
+
+  // 热量环
+  if(plan){
+    const targetK = plan.intake;
+    const remain = targetK - totalK + totalEx;
+    document.getElementById('ringKcal').textContent = totalK;
+    document.getElementById('ringLeft').textContent = remain>=0 ? `剩 ${remain} kcal` : `超 ${-remain} kcal`;
+    const pct = Math.min(100, totalK/targetK*100);
+    document.getElementById('ringFg').style.strokeDashoffset = 352 - 352*pct/100;
+    document.getElementById('mCarb').textContent = `${Math.round(totalC)}/${plan.carb}g`;
+    document.getElementById('mProt').textContent = `${Math.round(totalP)}/${plan.protein}g`;
+    document.getElementById('mFat').textContent = `${Math.round(totalF)}/${plan.fat}g`;
+    document.getElementById('barCarb').style.width = Math.min(100,totalC/plan.carb*100)+'%';
+    document.getElementById('barProt').style.width = Math.min(100,totalP/plan.protein*100)+'%';
+    document.getElementById('barFat').style.width = Math.min(100,totalF/plan.fat*100)+'%';
+  } else {
+    document.getElementById('ringKcal').textContent = totalK;
+    document.getElementById('ringLeft').textContent = '先去设方案';
+    document.getElementById('ringFg').style.strokeDashoffset = 352;
+    document.getElementById('mCarb').textContent = `${Math.round(totalC)}/—g`;
+    document.getElementById('mProt').textContent = `${Math.round(totalP)}/—g`;
+    document.getElementById('mFat').textContent = `${Math.round(totalF)}/—g`;
+    document.getElementById('barCarb').style.width = '0%';
+    document.getElementById('barProt').style.width = '0%';
+    document.getElementById('barFat').style.width = '0%';
+  }
+
   const names = {breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍎 加餐'};
   document.getElementById('mealList').innerHTML = Object.keys(names).map(s=>{
     const items = r.meals[s];
