@@ -4,6 +4,15 @@ android {
     namespace 'com.dietbuddy.app'
     compileSdk 34
 
+    signingConfigs {
+        release {
+            storeFile file('../dietbuddy.keystore')
+            storePassword 'dietbuddy123'
+            keyAlias 'dietbuddy'
+            keyPassword 'dietbuddy123'
+        }
+    }
+
     defaultConfig {
         applicationId "com.dietbuddy.app"
         minSdkVersion 24
@@ -12,8 +21,12 @@ android {
         versionName "1.0"
     }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.release
+        }
         release {
             minifyEnabled false
+            signingConfig signingConfigs.release
         }
     }
     compileOptions {

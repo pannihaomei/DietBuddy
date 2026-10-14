@@ -8,7 +8,7 @@
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#FFF6F4;color:#4A3B3B}
-  body{max-width:480px;margin:0 auto;padding-bottom:120px;overflow-x:hidden}
+  body{max-width:480px;margin:0 auto;padding-bottom:140px;overflow-x:hidden}
   .top{padding:20px 20px 12px;display:flex;justify-content:space-between;align-items:center}
   .top .date{font-size:13px;color:#B89B9B}
   .top .date b{color:#FF6B95;font-size:15px}
@@ -204,9 +204,10 @@
 <div class="mask" id="mealMask">
   <div class="sheet">
     <h3><span id="mmTitle">记录一餐</span><span class="close" onclick="closeMask('mealMask')">×</span></h3>
+    <div id="eatenList"></div>
     <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
     <button class="btn btn-primary" style="margin-top:0" onclick="document.getElementById('fileInput').click()">📷 拍照识别这餐</button>
-    <div class="field" style="margin-top:12px"><label>💬 备注（如：5勺燕麦、少饭多菜）</label><input id="fNote" type="text" placeholder="写点吃的细节，方便自己记"></div>
+    <div class="field" style="margin-top:12px"><label>💬 告诉AI额外信息（可选）</label><input id="fNote" type="text" placeholder="如：两碗、5勺燕麦、少饭多菜"></div>
     <img id="preview" class="preview" style="display:none">
     <div id="aiLoading" class="loading-box" style="display:none">
       <div class="spinner"></div>
@@ -341,6 +342,7 @@ function confirmPlan(){plan=planned[selIdx];LS.set('plan',plan);renderAll();show
 function openMeal(slot){
   curMeal=slot;
   document.getElementById('mmTitle').textContent=({breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍎 加餐'})[slot];
+  renderEatenList(slot);
   document.getElementById('foodGrid').innerHTML=FOODS.map((f,i)=>`<div class="food-cell" onclick="pickFood(${i})"><div class="fi">${f.ic}</div>${f.n}</div>`).join('');
   document.getElementById('preview').style.display='none';
   document.getElementById('aiResult').innerHTML='';
@@ -348,6 +350,22 @@ function openMeal(slot){
   document.getElementById('fileInput').value='';
   document.getElementById('fNote').value='';
   openMask('mealMask');
+}
+function renderEatenList(slot){
+  const r=todayRec(),items=r.meals[slot]||[];
+  const el=document.getElementById('eatenList');
+  if(!items.length){el.innerHTML='';return}
+  el.innerHTML='<div style="font-size:12px;color:#B89B9B;margin:8px 0 4px;">已吃：</div>'+items.map((m,i)=>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:#FFF9F8;border-radius:10px;margin-bottom:6px;font-size:13px">
+      <span>${m.ic} ${m.name}${m.note?'<small style="color:#B89B9B">('+m.note+')</small>':''}</span>
+      <span style="display:flex;align-items:center;gap:8px"><b style="color:#FF6B95">${m.kcal}</b><span onclick="delFood(${i})" style="color:#FFB6C5;cursor:pointer;padding:0 4px">×</span></span>
+    </div>`).join('');
+}
+function delFood(i){
+  todayRec().meals[curMeal].splice(i,1);
+  LS.set('records',records);
+  renderEatenList(curMeal);
+  renderAll();
 }
 function quickPhoto(){
   if(!profile){showPage('page-setup');return}
@@ -367,7 +385,7 @@ function pickFood(i){
   const f=FOODS[i],g=+document.getElementById('fGram').value||100,r=todayRec();
   const note=document.getElementById('fNote').value.trim();
   r.meals[curMeal].push({name:f.n,note,ic:f.ic,gram:g,kcal:Math.round(f.e*g/100),c:+(f.c*g/100).toFixed(1),p:+(f.p*g/100).toFixed(1),fa:+(f.f*g/100).toFixed(1)});
-  LS.set('records',records);closeMask('mealMask');renderAll();
+  LS.set('records',records);renderEatenList(curMeal);renderAll();
 }
 
 document.getElementById('fileInput').addEventListener('change',async function(e){
@@ -385,11 +403,14 @@ document.getElementById('fileInput').addEventListener('change',async function(e)
       const c=document.createElement('canvas');c.width=w;c.height=h;
       c.getContext('2d').drawImage(tmp,0,0,w,h);
       const comp=c.toDataURL('image/jpeg',0.8);
+      const note=document.getElementById('fNote').value.trim();
       try{
+        const body={image:comp,reasoning:{effort:'xhigh'}};
+        if(note)body.context=note;
         const resp=await fetch('https://partners.january.ai/v1.2/food-analysis/image',{
           method:'POST',
           headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey,'January-End-User-ID':'dietbuddy'},
-          body:JSON.stringify({image:comp})
+          body:JSON.stringify(body)
         });
         const data=await resp.json();
         document.getElementById('aiLoading').style.display='none';
@@ -419,7 +440,8 @@ function applyAI(){
   const a=window._ai,r=todayRec();
   const note=document.getElementById('fNote').value.trim();
   r.meals[curMeal].push({name:a.name,note,ic:'🤖',gram:0,kcal:a.kcal,c:a.c,p:a.p,fa:a.fa});
-  LS.set('records',records);closeMask('mealMask');renderAll();
+  LS.set('records',records);renderEatenList(curMeal);renderAll();
+  document.getElementById('aiResult').innerHTML='';document.getElementById('preview').style.display='none';
 }
 
 function openEx(){openMask('exMask');updateExPrev()}
