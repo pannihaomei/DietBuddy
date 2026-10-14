@@ -8,7 +8,7 @@
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#FFF6F4;color:#4A3B3B}
-  body{max-width:480px;margin:0 auto;padding-bottom:90px;overflow-x:hidden}
+  body{max-width:480px;margin:0 auto;padding-bottom:120px;overflow-x:hidden}
   .top{padding:20px 20px 12px;display:flex;justify-content:space-between;align-items:center}
   .top .date{font-size:13px;color:#B89B9B}
   .top .date b{color:#FF6B95;font-size:15px}
@@ -46,7 +46,7 @@
   .recent h4{font-size:13px;color:#B89B9B;margin:8px 4px}
   .chip-row{display:flex;flex-wrap:wrap;gap:8px}
   .chip{background:#fff;border-radius:14px;padding:10px 14px;font-size:13px;box-shadow:0 2px 8px rgba(255,143,171,0.08);cursor:pointer}
-  .fab{position:fixed;bottom:78px;left:50%;transform:translateX(-50%);width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#FF8FAB,#FF6B95);color:#fff;border:none;font-size:28px;box-shadow:0 8px 24px rgba(255,107,149,0.5);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center}
+  .fab{position:fixed;bottom:96px;right:18px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#FF8FAB,#FF6B95);color:#fff;border:none;font-size:24px;box-shadow:0 6px 20px rgba(255,107,149,0.5);cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center}
   .tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#fff;display:flex;padding:8px 0 calc(8px + env(safe-area-inset-bottom));box-shadow:0 -4px 20px rgba(0,0,0,0.05);z-index:40}
   .tab{flex:1;text-align:center;cursor:pointer;padding:4px 0}
   .tab .ico{font-size:22px}
@@ -150,6 +150,13 @@
     <h3>⚖️ 体重记录</h3>
     <div id="weightList" style="font-size:13px;line-height:1.8;color:#8B7575;"></div>
   </div>
+  <div class="card">
+    <h3>💾 数据备份</h3>
+    <div style="font-size:12px;color:#8B7575;margin-bottom:10px;">重装App前点导出，装完点导入恢复。平时直接覆盖安装新APK不卸载就不会丢数据。</div>
+    <button class="btn btn-primary" onclick="exportData()">导出数据到手机</button>
+    <input type="file" id="importFile" accept=".json" style="display:none">
+    <button class="btn btn-ghost" onclick="document.getElementById('importFile').click()">导入数据</button>
+  </div>
 </div>
 
 <div class="page" id="page-setup">
@@ -199,6 +206,7 @@
     <h3><span id="mmTitle">记录一餐</span><span class="close" onclick="closeMask('mealMask')">×</span></h3>
     <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
     <button class="btn btn-primary" style="margin-top:0" onclick="document.getElementById('fileInput').click()">📷 拍照识别这餐</button>
+    <div class="field" style="margin-top:12px"><label>💬 备注（如：5勺燕麦、少饭多菜）</label><input id="fNote" type="text" placeholder="写点吃的细节，方便自己记"></div>
     <img id="preview" class="preview" style="display:none">
     <div id="aiLoading" class="loading-box" style="display:none">
       <div class="spinner"></div>
@@ -338,6 +346,7 @@ function openMeal(slot){
   document.getElementById('aiResult').innerHTML='';
   document.getElementById('aiLoading').style.display='none';
   document.getElementById('fileInput').value='';
+  document.getElementById('fNote').value='';
   openMask('mealMask');
 }
 function quickPhoto(){
@@ -348,6 +357,7 @@ function quickPhoto(){
   document.getElementById('preview').style.display='none';
   document.getElementById('aiResult').innerHTML='';
   document.getElementById('aiLoading').style.display='none';
+  document.getElementById('fNote').value='';
   openMask('mealMask');
   setTimeout(()=>document.getElementById('fileInput').click(),300);
 }
@@ -355,7 +365,8 @@ function guessMeal(){const h=new Date().getHours();if(h<10)return'breakfast';if(
 
 function pickFood(i){
   const f=FOODS[i],g=+document.getElementById('fGram').value||100,r=todayRec();
-  r.meals[curMeal].push({name:f.n,ic:f.ic,gram:g,kcal:Math.round(f.e*g/100),c:+(f.c*g/100).toFixed(1),p:+(f.p*g/100).toFixed(1),fa:+(f.f*g/100).toFixed(1)});
+  const note=document.getElementById('fNote').value.trim();
+  r.meals[curMeal].push({name:f.n,note,ic:f.ic,gram:g,kcal:Math.round(f.e*g/100),c:+(f.c*g/100).toFixed(1),p:+(f.p*g/100).toFixed(1),fa:+(f.f*g/100).toFixed(1)});
   LS.set('records',records);closeMask('mealMask');renderAll();
 }
 
@@ -406,7 +417,8 @@ document.getElementById('fileInput').addEventListener('change',async function(e)
 
 function applyAI(){
   const a=window._ai,r=todayRec();
-  r.meals[curMeal].push({name:a.name,ic:'🤖',gram:0,kcal:a.kcal,c:a.c,p:a.p,fa:a.fa});
+  const note=document.getElementById('fNote').value.trim();
+  r.meals[curMeal].push({name:a.name,note,ic:'🤖',gram:0,kcal:a.kcal,c:a.c,p:a.p,fa:a.fa});
   LS.set('records',records);closeMask('mealMask');renderAll();
 }
 
@@ -436,6 +448,32 @@ function saveWeight(){
 
 function saveKey(){apiKey=document.getElementById('inApiKey').value.trim();LS.set('apiKey',apiKey);alert('已保存 ✓')}
 
+function exportData(){
+  const data={profile,plan,target,records,weights,apiKey,exportedAt:new Date().toISOString()};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='dietbuddy-backup-'+todayKey()+'.json';
+  a.click();
+}
+document.getElementById('importFile').addEventListener('change',function(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=function(){
+    try{
+      const d=JSON.parse(r.result);
+      if(d.profile){profile=d.profile;LS.set('profile',profile)}
+      if(d.plan){plan=d.plan;LS.set('plan',plan)}
+      if(d.target){target=d.target;LS.set('target',target)}
+      if(d.records){records=d.records;LS.set('records',records)}
+      if(d.weights){weights=d.weights;LS.set('weights',weights)}
+      if(d.apiKey){apiKey=d.apiKey;LS.set('apiKey',apiKey)}
+      alert('恢复成功 ✓');renderAll();
+    }catch(err){alert('文件不对：'+err.message)}
+  };
+  r.readAsText(f);
+});
+
 function renderAll(){
   renderDateSwitch();
   const r=todayRec();
@@ -444,7 +482,7 @@ function renderAll(){
   r.exercises.forEach(e=>tEx+=e.kcal);
   Object.keys({breakfast:1,lunch:1,dinner:1,snack:1}).forEach(s=>{
     const items=r.meals[s],k=items.reduce((a,b)=>a+b.kcal,0);
-    document.getElementById('d'+s[0].toUpperCase()+s.slice(1)).textContent=items.length?items.map(i=>i.ic+i.name).join('、'):'还没吃';
+    document.getElementById('d'+s[0].toUpperCase()+s.slice(1)).textContent=items.length?items.map(i=>i.ic+i.name+(i.note?'('+i.note+')':'')).join('、'):'还没吃';
     document.getElementById('k'+s[0].toUpperCase()+s.slice(1)).textContent=k||'';
   });
   document.getElementById('exList').innerHTML=r.exercises.length
