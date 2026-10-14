@@ -421,8 +421,10 @@ async function doAnalyze(){
   document.getElementById('aiResult').innerHTML='';
   const note=document.getElementById('fNote').value.trim();
   try{
-    const body={image:window._comp,reasoning:{effort:'xhigh'}};
-    if(note)body.context=note;
+    let ctx=note;
+    if(ctx)ctx=ctx+'。请用中文命名这餐和每种食物。';
+    else ctx='请用中文命名这餐和每种食物。';
+    const body={image:window._comp,reasoning:{effort:'xhigh'},context:ctx};
     const resp=await fetch('https://partners.january.ai/v1.2/food-analysis/image',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey,'January-End-User-ID':'dietbuddy'},
@@ -432,7 +434,16 @@ async function doAnalyze(){
     document.getElementById('aiLoading').style.display='none';
     if(!data.total_nutrients)throw new Error(data.detail||data.message||'识别失败');
     const n=data.total_nutrients;
-    const kcal=n.calories?.value||0,carb=n.carbohydrates?.value||0,prot=n.protein?.value||0,fat=n.total_fat?.value||0;
+    let kcal=n.calories?.value||0,carb=n.carbohydrates?.value||0,prot=n.protein?.value||0,fat=n.total_fat?.value||0;
+    // 如果用户备注里写了碳蛋脂比例 X:Y:Z，按比例重算
+    const ratioMatch=note.match(/(\d+)\s*[:：]\s*(\d+)\s*[:：]\s*(\d+)/);
+    if(ratioMatch){
+      const[_,rc,rp,rf]=ratioMatch.map(Number);
+      const tot=rc+rp+rf;
+      carb=Math.round(kcal*rc/tot/4*10)/10;
+      prot=Math.round(kcal*rp/tot/4*10)/10;
+      fat=Math.round(kcal*rf/tot/9*10)/10;
+    }
     const foods=(data.detections||[]).map(d=>d.food?.name).filter(Boolean);
     document.getElementById('aiResult').innerHTML=`
       <div class="ai-result">
