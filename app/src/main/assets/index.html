@@ -209,6 +209,7 @@
     <button class="btn btn-primary" style="margin-top:0" onclick="document.getElementById('fileInput').click()">📷 拍照识别这餐</button>
     <div class="field" style="margin-top:12px"><label>💬 告诉AI额外信息（可选）</label><input id="fNote" type="text" placeholder="如：两碗、5勺燕麦、少饭多菜"></div>
     <img id="preview" class="preview" style="display:none">
+    <button id="analyzeBtn" class="btn btn-primary" style="display:none;margin-top:0" onclick="doAnalyze()">🤖 开始AI分析</button>
     <div id="aiLoading" class="loading-box" style="display:none">
       <div class="spinner"></div>
       <div class="t">AI 正在看这盘菜...</div>
@@ -345,6 +346,7 @@ function openMeal(slot){
   renderEatenList(slot);
   document.getElementById('foodGrid').innerHTML=FOODS.map((f,i)=>`<div class="food-cell" onclick="pickFood(${i})"><div class="fi">${f.ic}</div>${f.n}</div>`).join('');
   document.getElementById('preview').style.display='none';
+  document.getElementById('analyzeBtn').style.display='none';
   document.getElementById('aiResult').innerHTML='';
   document.getElementById('aiLoading').style.display='none';
   document.getElementById('fileInput').value='';
@@ -373,9 +375,11 @@ function quickPhoto(){
   document.getElementById('mmTitle').textContent=({breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍎 加餐'})[curMeal];
   document.getElementById('foodGrid').innerHTML=FOODS.map((f,i)=>`<div class="food-cell" onclick="pickFood(${i})"><div class="fi">${f.ic}</div>${f.n}</div>`).join('');
   document.getElementById('preview').style.display='none';
+  document.getElementById('analyzeBtn').style.display='none';
   document.getElementById('aiResult').innerHTML='';
   document.getElementById('aiLoading').style.display='none';
   document.getElementById('fNote').value='';
+  renderEatenList(curMeal);
   openMask('mealMask');
   setTimeout(()=>document.getElementById('fileInput').click(),300);
 }
@@ -391,50 +395,58 @@ function pickFood(i){
 document.getElementById('fileInput').addEventListener('change',async function(e){
   const f=e.target.files[0];if(!f)return;
   const img=document.getElementById('preview');img.src=URL.createObjectURL(f);img.style.display='block';
-  if(!apiKey){alert('去"我的"页面填 January AI Key');return}
-  document.getElementById('aiLoading').style.display='block';
   document.getElementById('aiResult').innerHTML='';
+  document.getElementById('aiLoading').style.display='none';
+  document.getElementById('analyzeBtn').style.display='block';
   const reader=new FileReader();
   reader.onload=function(){
     const tmp=new Image();
-    tmp.onload=async function(){
+    tmp.onload=function(){
       let w=tmp.width,h=tmp.height;const mx=1600;
       if(Math.max(w,h)>mx){if(w>mx){h=h*mx/w;w=mx}else{w=w*mx/h;h=mx}}
       const c=document.createElement('canvas');c.width=w;c.height=h;
       c.getContext('2d').drawImage(tmp,0,0,w,h);
-      const comp=c.toDataURL('image/jpeg',0.8);
-      const note=document.getElementById('fNote').value.trim();
-      try{
-        const body={image:comp,reasoning:{effort:'xhigh'}};
-        if(note)body.context=note;
-        const resp=await fetch('https://partners.january.ai/v1.2/food-analysis/image',{
-          method:'POST',
-          headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey,'January-End-User-ID':'dietbuddy'},
-          body:JSON.stringify(body)
-        });
-        const data=await resp.json();
-        document.getElementById('aiLoading').style.display='none';
-        if(!data.total_nutrients)throw new Error(data.detail||data.message||'识别失败');
-        const n=data.total_nutrients;
-        const kcal=n.calories?.value||0,carb=n.carbohydrates?.value||0,prot=n.protein?.value||0,fat=n.total_fat?.value||0;
-        const foods=(data.detections||[]).map(d=>d.food?.name).filter(Boolean);
-        document.getElementById('aiResult').innerHTML=`
-          <div class="ai-result">
-            <div class="meal-name">🤖 ${data.meal_name||'这一餐'}</div>
-            ${foods.length?`<div class="food-list">包含：${foods.join('、')}</div>`:''}
-            <div class="total">${kcal} kcal｜碳${carb}g·蛋${prot}g·脂${fat}g</div>
-            <button class="btn btn-primary" style="margin-top:10px;padding:10px;" onclick="applyAI()">计入这餐</button>
-          </div>`;
-        window._ai={name:data.meal_name||'AI识别',kcal,c:carb,p:prot,fa:fat};
-      }catch(err){
-        document.getElementById('aiLoading').style.display='none';
-        alert('识别失败：'+(err.message||'网络问题'));
-      }
+      window._comp=c.toDataURL('image/jpeg',0.8);
     };
     tmp.src=reader.result;
   };
   reader.readAsDataURL(f);
 });
+
+async function doAnalyze(){
+  if(!window._comp){alert('先拍一张照片');return}
+  if(!apiKey){alert('去"我的"页面填 January AI Key');return}
+  document.getElementById('analyzeBtn').style.display='none';
+  document.getElementById('aiLoading').style.display='block';
+  document.getElementById('aiResult').innerHTML='';
+  const note=document.getElementById('fNote').value.trim();
+  try{
+    const body={image:window._comp,reasoning:{effort:'xhigh'}};
+    if(note)body.context=note;
+    const resp=await fetch('https://partners.january.ai/v1.2/food-analysis/image',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey,'January-End-User-ID':'dietbuddy'},
+      body:JSON.stringify(body)
+    });
+    const data=await resp.json();
+    document.getElementById('aiLoading').style.display='none';
+    if(!data.total_nutrients)throw new Error(data.detail||data.message||'识别失败');
+    const n=data.total_nutrients;
+    const kcal=n.calories?.value||0,carb=n.carbohydrates?.value||0,prot=n.protein?.value||0,fat=n.total_fat?.value||0;
+    const foods=(data.detections||[]).map(d=>d.food?.name).filter(Boolean);
+    document.getElementById('aiResult').innerHTML=`
+      <div class="ai-result">
+        <div class="meal-name">🤖 ${data.meal_name||'这一餐'}</div>
+        ${foods.length?`<div class="food-list">包含：${foods.join('、')}</div>`:''}
+        <div class="total">${kcal} kcal｜碳${carb}g·蛋${prot}g·脂${fat}g</div>
+        <button class="btn btn-primary" style="margin-top:10px;padding:10px;" onclick="applyAI()">计入这餐</button>
+      </div>`;
+    window._ai={name:data.meal_name||'AI识别',kcal,c:carb,p:prot,fa:fat};
+  }catch(err){
+    document.getElementById('aiLoading').style.display='none';
+    alert('识别失败：'+(err.message||'网络问题'));
+  }
+}
 
 function applyAI(){
   const a=window._ai,r=todayRec();
