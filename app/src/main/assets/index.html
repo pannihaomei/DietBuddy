@@ -196,6 +196,7 @@
   </div>
   <div class="card" id="planResult" style="display:none">
     <h3>选一个能坚持的</h3>
+    <div id="planWarn" style="display:none;background:#FFF4E5;color:#B25E00;border-radius:12px;padding:12px;font-size:12px;line-height:1.7;margin-bottom:12px;"></div>
     <div id="planOptions"></div>
     <button class="btn btn-primary" onclick="confirmPlan()">就选这个</button>
   </div>
@@ -318,23 +319,63 @@ function saveProfile(){
 
 let planned=null;
 function calcPlans(){
-  const tv=+document.getElementById('tValue').value,wk=+document.getElementById('tWeeks').value;
+  const tv=parseFloat(document.getElementById('tValue').value),wk=parseFloat(document.getElementById('tWeeks').value);
   if(!tv||!wk){alert('填全目标');return}
   target={type:document.getElementById('tType').value,value:tv,weeks:wk};LS.set('target',target);
   const bmr=calcBMR(profile),tdee=bmr*(+profile.activity);
-  const gaps=[
-    {key:'aggressive',name:'🔥 激进型',desc:'掉秤快但饿，短期冲刺',kcal:-700},
-    {key:'balanced',name:'🌸 折中型',desc:'推荐，可持续不挨饿',kcal:-450},
-    {key:'easy',name:'🍃 保守型',desc:'慢慢调，几乎不饿',kcal:-200}];
-  planned=gaps.map(g=>{const intake=tdee+g.kcal,protein=1.8*profile.weight,fat=(intake*0.28)/9,carb=(intake-protein*4-fat*9)/4;
-    return{...g,intake:Math.round(intake),protein:Math.round(protein),fat:Math.round(fat),carb:Math.round(carb)}});
+  const curW=profile.weight;
+  const bf=calcBF(profile);
+
+  // 1) 目标减重换算
+  let needKg;
+  if(target.type==='weight'){
+    needKg=curW-tv;
+  }else{ // 体脂目标：瘦体重不变，反推目标体重
+    const lean=curW*(100-bf)/100;
+    needKg=curW-lean*100/(100-tv);
+  }
+  if(needKg<=0){alert('目标已经达到或高于当前，无需减重');return}
+
+  // 2) 用户所选周数需要的速率（kg/周）
+  const userRate=needKg/wk;
+  // 安全上限：约体重1%/周，缺口≤1000
+  const safeRate=Math.min(0.010*curW,1000*7/7700);
+
+  // 3) 三档速率，以用户速率为基准分快/中/慢，但都被安全上限约束
+  const rates=[
+    {key:'aggressive',name:'🔥 激进型',mult:1.0,desc:userRate>safeRate?'极限冲刺：按你的周数硬达成','较快减重，掉秤明显'},
+    {key:'balanced',name:'🌸 折中型',mult:0.75,desc:userRate>safeRate?'放缓到健康速度，稳妥达成','推荐：可持续不挨饿'},
+    {key:'easy',name:'🍃 保守型',mult:0.5,desc:userRate>safeRate?'以最健康速度慢慢来','慢速调整，几乎不饿'}];
+  planned=rates.map(r=>{
+    const wkRate=Math.min(userRate*r.mult,safeRate);
+    const gap=Math.round(wkRate*7700/7);
+    const intake=tdee-gap;
+    const protein=Math.round(1.8*curW);
+    const fat=Math.round(intake*0.28/9);
+    const carb=Math.round((intake-protein*4-fat*9)/4);
+    return{...r,weeklyKg:wkRate,gap,intake,protein,fat,carb};
+  });
+
+  // 4) 警告
+  const warn=userRate>safeRate
+    ? `⚠️ 你选 ${wk} 周达成，需每周减 ${userRate.toFixed(1)}kg，超出健康速度（约每周 ${(safeRate).toFixed(1)}kg / 体重1%）。建议延长周期，或用折衷/保守档，避免掉肌肉和反弹。`
+    : null;
+
   document.getElementById('planResult').style.display='block';
+  const warnEl=document.getElementById('planWarn');
+  warnEl.style.display=warn?'block':'none';
+  if(warn)warnEl.innerHTML=warn;
   document.getElementById('planOptions').innerHTML=planned.map((p,i)=>`
     <div class="plan-card" data-i="${i}" onclick="selPlan(this)">
       ${p.key==='balanced'?'<div class="badge">推荐</div>':''}
       <div class="pt">${p.name}</div><div class="pd">${p.desc}</div>
-      <div class="pk">每日${p.intake}kcal｜碳${p.carb}g·蛋${p.protein}g·脂${p.fat}g</div>
+      <div class="pk" style="font-size:12px">每日${p.intake}kcal（缺口${p.gap}）｜预计每周减${p.weeklyKg.toFixed(1)}kg</div>
+      <div class="pk" style="margin-top:4px;font-size:12px">碳${p.carb}g · 蛋${p.protein}g · 脂${p.fat}g</div>
     </div>`).join('');
+  // 默认选中：推荐折衷（若用户紧目标则激进）
+  selIdx = userRate>safeRate?0:1;
+  document.querySelectorAll('.plan-card').forEach(c=>c.classList.remove('sel'));
+  const cards=document.querySelectorAll('.plan-card');if(cards[selIdx])cards[selIdx].classList.add('sel');
 }
 let selIdx=1;
 function selPlan(el){document.querySelectorAll('.plan-card').forEach(c=>c.classList.remove('sel'));el.classList.add('sel');selIdx=+el.dataset.i}
@@ -583,8 +624,11 @@ function renderMe(){
       <span class="stat-pill">BMR ${Math.round(bmr)}</span>
       <span class="stat-pill">TDEE ${Math.round(tdee)}</span>`;
   }
-  if(plan)document.getElementById('planInfo').innerHTML=`<div style="font-size:14px;line-height:1.8">
-    <b>${plan.name}</b><br>每日${plan.intake}kcal｜碳${plan.carb}g·蛋${plan.protein}g·脂${plan.fat}g</div>`;
+  if(plan)document.getElementById('planInfo').innerHTML=`<div style="font-size:13px;line-height:1.9">
+    <b style="font-size:14px">${plan.name}</b><br>
+    每日摄入 <b>${plan.intake}kcal</b>（缺口 ${plan.gap}kcal）<br>
+    预计每周减 <b>${(plan.weeklyKg||0).toFixed(1)}kg</b><br>
+    碳${plan.carb}g · 蛋白${plan.protein}g · 脂肪${plan.fat}g</div>`;
   document.getElementById('weightList').innerHTML=weights.length
     ? weights.slice(0,7).map(w=>`<div>${w.date} — <b>${w.kg} kg</b></div>`).join('')
     : '还没记过体重';
