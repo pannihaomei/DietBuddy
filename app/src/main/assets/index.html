@@ -343,9 +343,9 @@ function calcPlans(){
 
   // 3) 三档速率，以用户速率为基准分快/中/慢，但都被安全上限约束
   const rates=[
-    {key:'aggressive',name:'🔥 激进型',mult:1.0,desc:userRate>safeRate?'极限冲刺：按你的周数硬达成','较快减重，掉秤明显'},
-    {key:'balanced',name:'🌸 折中型',mult:0.75,desc:userRate>safeRate?'放缓到健康速度，稳妥达成','推荐：可持续不挨饿'},
-    {key:'easy',name:'🍃 保守型',mult:0.5,desc:userRate>safeRate?'以最健康速度慢慢来','慢速调整，几乎不饿'}];
+    {key:'aggressive',name:'🔥 激进型',mult:1.0,desc:userRate>safeRate?'极限冲刺：按你的周数硬达成':'较快减重，掉秤明显'},
+    {key:'balanced',name:'🌸 折中型',mult:0.75,desc:userRate>safeRate?'放缓到健康速度，稳妥达成':'推荐：可持续不挨饿'},
+    {key:'easy',name:'🍃 保守型',mult:0.5,desc:userRate>safeRate?'以最健康速度慢慢来':'慢速调整，几乎不饿'}];
   planned=rates.map(r=>{
     const wkRate=Math.min(userRate*r.mult,safeRate);
     const gap=Math.round(wkRate*7700/7);
