@@ -206,20 +206,29 @@
   <div class="sheet">
     <h3><span id="mmTitle">记录一餐</span><span class="close" onclick="closeMask('mealMask')">×</span></h3>
     <div id="eatenList"></div>
+    <div class="field"><label>💬 描述这餐（不拍照也能分析）</label><input id="fNote" type="text" placeholder="如：两碗鸡肉面、5勺燕麦蛋白粉"></div>
     <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
-    <button class="btn btn-primary" style="margin-top:0" onclick="document.getElementById('fileInput').click()">📷 拍照识别这餐</button>
-    <div class="field" style="margin-top:12px"><label>💬 告诉AI额外信息（可选）</label><input id="fNote" type="text" placeholder="如：两碗、5勺燕麦、少饭多菜"></div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-ghost" style="margin-top:0;flex:1" onclick="document.getElementById('fileInput').click()">📷 拍照</button>
+      <button id="analyzeBtn" class="btn btn-primary" style="margin-top:0;flex:1" onclick="doAnalyze()">🤖 AI分析</button>
+    </div>
     <img id="preview" class="preview" style="display:none">
-    <button id="analyzeBtn" class="btn btn-primary" style="display:none;margin-top:0" onclick="doAnalyze()">🤖 开始AI分析</button>
     <div id="aiLoading" class="loading-box" style="display:none">
       <div class="spinner"></div>
-      <div class="t">AI 正在看这盘菜...</div>
+      <div class="t">AI 正在分析...</div>
       <div class="s">复杂一餐可能要 10-20 秒，别退出</div>
     </div>
     <div id="aiResult"></div>
     <div style="font-size:12px;color:#B89B9B;margin:14px 0 8px;">或直接选常见食物：</div>
     <div class="food-grid" id="foodGrid"></div>
     <div class="field" style="margin-top:10px"><label>这餐大约克数</label><input id="fGram" type="number" value="200"></div>
+  </div>
+</div>
+
+<div class="mask" id="foodDetailMask">
+  <div class="sheet">
+    <h3><span id="fdTitle">食物详情</span><span class="close" onclick="closeMask('foodDetailMask')">×</span></h3>
+    <div id="fdBody"></div>
   </div>
 </div>
 
@@ -389,21 +398,22 @@ function openMeal(slot){
   renderEatenList(slot);
   document.getElementById('foodGrid').innerHTML=FOODS.map((f,i)=>`<div class="food-cell" onclick="pickFood(${i})"><div class="fi">${f.ic}</div>${f.n}</div>`).join('');
   document.getElementById('preview').style.display='none';
-  document.getElementById('analyzeBtn').style.display='none';
+  document.getElementById('analyzeBtn').style.display='flex';
   document.getElementById('aiResult').innerHTML='';
   document.getElementById('aiLoading').style.display='none';
   document.getElementById('fileInput').value='';
   document.getElementById('fNote').value='';
+  window._comp=null;window._ai=null;
   openMask('mealMask');
 }
 function renderEatenList(slot){
   const r=todayRec(),items=r.meals[slot]||[];
   const el=document.getElementById('eatenList');
   if(!items.length){el.innerHTML='';return}
-  el.innerHTML='<div style="font-size:12px;color:#B89B9B;margin:8px 0 4px;">已吃：</div>'+items.map((m,i)=>
-    `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:#FFF9F8;border-radius:10px;margin-bottom:6px;font-size:13px">
+  el.innerHTML='<div style="font-size:12px;color:#B89B9B;margin:8px 0 4px;">已吃（点条目查看详情）：</div>'+items.map((m,i)=>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:#FFF9F8;border-radius:10px;margin-bottom:6px;font-size:13px;cursor:pointer" onclick="openDetail('${slot}',${i})">
       <span>${m.ic} ${m.name}${m.note?'<small style="color:#B89B9B">('+m.note+')</small>':''}</span>
-      <span style="display:flex;align-items:center;gap:8px"><b style="color:#FF6B95">${m.kcal}</b><span onclick="delFood(${i})" style="color:#FFB6C5;cursor:pointer;padding:0 4px">×</span></span>
+      <span style="display:flex;align-items:center;gap:8px"><b style="color:#FF6B95">${m.kcal}kcal</b><span onclick="event.stopPropagation();delFood(${i})" style="color:#FFB6C5;cursor:pointer;padding:0 4px;font-size:16px">×</span></span>
     </div>`).join('');
 }
 function delFood(i){
@@ -412,16 +422,82 @@ function delFood(i){
   renderEatenList(curMeal);
   renderAll();
 }
+
+// 本地规则生成健康分析（不额外消耗API，结果随记录保存，可复查）
+function buildAnalysis(name,foods,kcal,c,p,fa,note){
+  const text=((name||'')+' '+(foods||[]).join(' ')+' '+(note||'')).toLowerCase();
+  const tags=[];
+  // 关键词识别
+  const fatKw=['炸','煎','五花肉','肥肉','培根','花生','坚果','瓜子','薯片','油条','炸鸡','汉堡','烧烤','奶油','黄油','蛋糕','薯片'];
+  const sweetKw=['糖','奶茶','可乐','饮料','蛋糕','甜点','饼干','巧克力','蜂蜜','果汁'];
+  const vegKw=['西兰花','蔬菜','青菜','白菜','菠菜','西红柿','番茄','黄瓜','沙拉','叶菜'];
+  const leanKw=['鸡胸','鱼','虾','鸡蛋','蛋清','豆腐','牛肉','鸡肉','牛奶','酸奶','蛋白'];
+  let isFat=fatKw.some(k=>text.includes(k));
+  let isSweet=sweetKw.some(k=>text.includes(k));
+  let isVeg=vegKw.some(k=>text.includes(k));
+  let isLean=leanKw.some(k=>text.includes(k));
+  const parts=[];
+  // 优点
+  const pros=[];
+  if(p>=15)pros.push(`蛋白质约${Math.round(p)}g，有助于维持饱腹感和肌肉量`);
+  if(isVeg)pros.push('含有蔬菜，膳食纤维和维生素较丰富');
+  if(isLean&&!isFat)pros.push('属于低脂优质蛋白来源');
+  if(pros.length)parts.push('✅ '+pros.join('；')+'。');
+  // 注意点
+  const cons=[];
+  const fatShare=kcal>0?fa*9/kcal*100:0;
+  if(isFat)cons.push('油脂/热量密度偏高，注意控制份量');
+  if(fatShare>35)cons.push(`脂肪供能占比约${Math.round(fatShare)}%，偏高，减脂期建议减量`);
+  if(isSweet)cons.push('添加糖含量较高，注意控糖，避免血糖大幅波动');
+  const carbShare=kcal>0?c*4/kcal*100:0;
+  if(carbShare>65)cons.push('碳水供能占比偏高，注意搭配蔬菜和蛋白平衡血糖');
+  if(cons.length)parts.push('⚠️ '+cons.join('；')+'。');
+  // 建议
+  let tip='';
+  if(plan){
+    const pct=Math.round(kcal/plan.intake*100);
+    if(pct>60)tip=`这一餐已占今日目标的${pct}%，后续两餐建议清淡、多蔬菜。`;
+    else if(pct>35)tip=`约占今日目标${pct}%，搭配绿叶菜和优质蛋白会更均衡。`;
+    else tip=`约占今日目标${pct}%，份量适中，记得搭配蔬菜。`;
+  }else{
+    tip='建议搭配蔬菜和适量优质蛋白，保持三餐均衡。';
+  }
+  parts.push('💡 '+tip);
+  return parts.join(' ');
+}
+
+function openDetail(slot,index){
+  const m=todayRec().meals[slot][index];
+  if(!m)return;
+  document.getElementById('fdTitle').textContent=m.ic+' '+m.name;
+  const r=m.report||{};
+  document.getElementById('fdBody').innerHTML=`
+    <div class="ai-result">
+      <div class="total" style="border:none;padding:0;margin-bottom:8px">
+        <b style="font-size:22px;color:#2E7D32">${m.kcal}</b> kcal<br>
+        <span style="font-size:13px">碳 ${m.c}g · 蛋白 ${m.p}g · 脂肪 ${m.fa}g</span>
+      </div>
+      ${r.foods&&r.foods.length?`<div class="food-list">包含：${r.foods.join('、')}</div>`:''}
+      ${r.note?`<div class="food-list" style="color:#888">备注：${r.note}</div>`:''}
+      <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #A5D6A7">
+        <div style="font-weight:700;color:#2E7D32;margin-bottom:6px">健康分析</div>
+        <div style="font-size:13px;line-height:1.8;color:#555">${r.analysis||'本次为手动录入，未生成AI健康分析。'}</div>
+      </div>
+      ${r.time?`<div style="font-size:11px;color:#B89B9B;margin-top:10px">分析时间：${r.time}</div>`:''}
+    </div>`;
+  openMask('foodDetailMask');
+}
 function quickPhoto(){
   if(!profile){showPage('page-setup');return}
   curMeal=guessMeal();
   document.getElementById('mmTitle').textContent=({breakfast:'🌅 早餐',lunch:'☀️ 午餐',dinner:'🌙 晚餐',snack:'🍎 加餐'})[curMeal];
   document.getElementById('foodGrid').innerHTML=FOODS.map((f,i)=>`<div class="food-cell" onclick="pickFood(${i})"><div class="fi">${f.ic}</div>${f.n}</div>`).join('');
   document.getElementById('preview').style.display='none';
-  document.getElementById('analyzeBtn').style.display='none';
+  document.getElementById('analyzeBtn').style.display='flex';
   document.getElementById('aiResult').innerHTML='';
   document.getElementById('aiLoading').style.display='none';
   document.getElementById('fNote').value='';
+  window._comp=null;window._ai=null;
   renderEatenList(curMeal);
   openMask('mealMask');
   setTimeout(()=>document.getElementById('fileInput').click(),300);
@@ -431,7 +507,11 @@ function guessMeal(){const h=new Date().getHours();if(h<10)return'breakfast';if(
 function pickFood(i){
   const f=FOODS[i],g=+document.getElementById('fGram').value||100,r=todayRec();
   const note=document.getElementById('fNote').value.trim();
-  r.meals[curMeal].push({name:f.n,note,ic:f.ic,gram:g,kcal:Math.round(f.e*g/100),c:+(f.c*g/100).toFixed(1),p:+(f.p*g/100).toFixed(1),fa:+(f.f*g/100).toFixed(1)});
+  const kcal=Math.round(f.e*g/100),c=+(f.c*g/100).toFixed(1),p=+(f.p*g/100).toFixed(1),fa=+(f.f*g/100).toFixed(1);
+  const now=new Date();
+  const time=`${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const analysis=buildAnalysis(f.n,[f.n],kcal,c,p,fa,note);
+  r.meals[curMeal].push({name:f.n,note,ic:f.ic,gram:g,kcal,c,p,fa,report:{foods:[f.n],analysis,note,time}});
   LS.set('records',records);renderEatenList(curMeal);renderAll();
 }
 
@@ -440,7 +520,7 @@ document.getElementById('fileInput').addEventListener('change',async function(e)
   const img=document.getElementById('preview');img.src=URL.createObjectURL(f);img.style.display='block';
   document.getElementById('aiResult').innerHTML='';
   document.getElementById('aiLoading').style.display='none';
-  document.getElementById('analyzeBtn').style.display='block';
+  window._ai=null;
   const reader=new FileReader();
   reader.onload=function(){
     const tmp=new Image();
@@ -457,58 +537,87 @@ document.getElementById('fileInput').addEventListener('change',async function(e)
 });
 
 async function doAnalyze(){
-  if(!window._comp){alert('先拍一张照片');return}
+  const note=document.getElementById('fNote').value.trim();
+  if(!window._comp && !note){alert('请先拍照，或在描述框里写下你吃了什么');return}
   if(!apiKey){alert('去"我的"页面填 January AI Key');return}
   document.getElementById('analyzeBtn').style.display='none';
   document.getElementById('aiLoading').style.display='block';
   document.getElementById('aiResult').innerHTML='';
-  const note=document.getElementById('fNote').value.trim();
-  try{
+  let endpoint,body;
+  if(window._comp){
     let ctx=note;
-    if(ctx)ctx=ctx+'。请用中文命名这餐和每种食物。';
+    if(ctx)ctx=ctx+'。请用中文命名这餐和每种食物；若描述了份量、数量或烹饪方式，请以描述为准。';
     else ctx='请用中文命名这餐和每种食物。';
-    const body={image:window._comp,reasoning:{effort:'xhigh'},context:ctx};
-    const resp=await fetch('https://partners.january.ai/v1.2/food-analysis/image',{
+    body={image:window._comp,reasoning:{effort:'xhigh'},context:ctx};
+    endpoint='https://partners.january.ai/v1.2/food-analysis/image';
+  }else{
+    body={text:note};
+    endpoint='https://partners.january.ai/v1.2/food-analysis/text';
+  }
+  try{
+    const resp=await fetch(endpoint,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey,'January-End-User-ID':'dietbuddy'},
       body:JSON.stringify(body)
     });
     const data=await resp.json();
     document.getElementById('aiLoading').style.display='none';
+    document.getElementById('analyzeBtn').style.display='flex';
     if(!data.total_nutrients)throw new Error(data.detail||data.message||'识别失败');
     const n=data.total_nutrients;
-    let kcal=n.calories?.value||0,carb=n.carbohydrates?.value||0,prot=n.protein?.value||0,fat=n.total_fat?.value||0;
-    // 如果用户备注里写了碳蛋脂克重比例 X:Y:Z，按克重比重算
+    let kcal=Math.round(n.calories?.value||0),carb=+(n.carbohydrates?.value||0).toFixed(1),prot=+(n.protein?.value||0).toFixed(1),fat=+(n.total_fat?.value||0).toFixed(1);
+    // 用户备注里写了碳蛋脂克重比 X:Y:Z，按克重比重算
     const ratioMatch=note.match(/(\d+)\s*[:：]\s*(\d+)\s*[:：]\s*(\d+)/);
     if(ratioMatch){
       const[_,rc,rp,rf]=ratioMatch.map(Number);
-      const perServing=4*(rc+rp)+9*rf; // 每份比例的热量
-      const scale=kcal/perServing;
-      carb=Math.round(rc*scale*10)/10;
-      prot=Math.round(rp*scale*10)/10;
-      fat=Math.round(rf*scale*10)/10;
+      const perServing=4*(rc+rp)+9*rf;
+      if(perServing>0){
+        const scale=kcal/perServing;
+        carb=Math.round(rc*scale*10)/10;
+        prot=Math.round(rp*scale*10)/10;
+        fat=Math.round(rf*scale*10)/10;
+      }
     }
     const foods=(data.detections||[]).map(d=>d.food?.name).filter(Boolean);
+    let mealName=data.meal_name;
+    if(!mealName){mealName=note.length>18?note.slice(0,18)+'…':(note||'这一餐')}
+    const analysis=buildAnalysis(mealName,foods,kcal,carb,prot,fat,note);
+    const now=new Date();
+    const time=`${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
     document.getElementById('aiResult').innerHTML=`
       <div class="ai-result">
-        <div class="meal-name">🤖 ${data.meal_name||'这一餐'}</div>
+        <div class="meal-name">🤖 ${mealName}</div>
         ${foods.length?`<div class="food-list">包含：${foods.join('、')}</div>`:''}
-        <div class="total">${kcal} kcal｜碳${carb}g·蛋${prot}g·脂${fat}g</div>
-        <button class="btn btn-primary" style="margin-top:10px;padding:10px;" onclick="applyAI()">计入这餐</button>
+        <div class="total">
+          <b style="font-size:22px;color:#2E7D32">${kcal}</b> kcal<br>
+          <span style="font-size:13px">碳 ${carb}g · 蛋白 ${prot}g · 脂肪 ${fat}g</span>
+        </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #A5D6A7">
+          <div style="font-weight:700;color:#2E7D32;margin-bottom:6px">健康分析</div>
+          <div style="font-size:13px;line-height:1.8;color:#555">${analysis}</div>
+        </div>
+        <button class="btn btn-primary" style="margin-top:12px;padding:10px;" onclick="applyAI()">计入这餐</button>
       </div>`;
-    window._ai={name:data.meal_name||'AI识别',kcal,c:carb,p:prot,fa:fat};
+    window._ai={name:mealName,kcal,c:carb,p:prot,fa:fat,foods,analysis,note,time};
   }catch(err){
     document.getElementById('aiLoading').style.display='none';
-    alert('识别失败：'+(err.message||'网络问题'));
+    document.getElementById('analyzeBtn').style.display='flex';
+    alert('识别失败：'+(err.message||'网络问题，请检查API Key和网络'));
   }
 }
 
 function applyAI(){
   const a=window._ai,r=todayRec();
-  const note=document.getElementById('fNote').value.trim();
-  r.meals[curMeal].push({name:a.name,note,ic:'🤖',gram:0,kcal:a.kcal,c:a.c,p:a.p,fa:a.fa});
+  if(!a)return;
+  r.meals[curMeal].push({
+    name:a.name,note:a.note,ic:'🤖',gram:0,kcal:a.kcal,c:a.c,p:a.p,fa:a.fa,
+    report:{foods:a.foods||[],analysis:a.analysis||'',note:a.note,time:a.time}
+  });
   LS.set('records',records);renderEatenList(curMeal);renderAll();
   document.getElementById('aiResult').innerHTML='';document.getElementById('preview').style.display='none';
+  document.getElementById('analyzeBtn').style.display='flex';
+  window._comp=null;window._ai=null;document.getElementById('fileInput').value='';
+  document.getElementById('fNote').value='';
 }
 
 function openEx(){openMask('exMask');updateExPrev()}
